@@ -129,10 +129,7 @@ class StockfishPhaseUseCase @Inject constructor(
                 centipawns  = row.evalBefore,
                 isMate      = false,
                 mateIn      = null,
-                bestMoveUci = row.bestMove.let { san ->
-                    // Best-effort: we don't have UCI for cloud bestMove, will recompute from Stockfish
-                    ""
-                },
+                bestMoveUci = "", // will be recomputed from realBeforeResult
                 pvLines     = emptyList()
             )
         }
@@ -174,7 +171,6 @@ class StockfishPhaseUseCase @Inject constructor(
         val bestMoveSan = try {
             uciToSan(ChessBoard.fromFen(prevFen), bestMoveUci) ?: bestMoveUci
         } catch (_: Exception) { bestMoveUci }
-
         val isBestMove = bestMoveUci == sanToUci(ChessBoard.fromFen(prevFen), row.moveSan)
         val materialBefore = GamePhaseDetector.totalMaterialFromFen(prevFen)
         val gamePhase = GamePhaseDetector.detectPhase(materialBefore)

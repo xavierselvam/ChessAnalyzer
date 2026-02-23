@@ -20,6 +20,8 @@ data class SettingsUiState(
     val engineMode: String = "local",  // "local" | "cloud" | "hybrid"
     val autoAnalyze: Boolean = false,
     val darkMode: String = "system",
+    val soundEnabled: Boolean = true,
+    val soundVolume: Float = 1.0f,
     val isValidatingChessCom: Boolean = false,
     val isValidatingLichess: Boolean = false,
     val chessComValid: Boolean? = null,
@@ -77,6 +79,17 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(excludedSyncTypes = types) }
             }
         }
+        // Watch sound settings
+        viewModelScope.launch {
+            userPreferences.soundEnabled.collect { enabled ->
+                _uiState.update { it.copy(soundEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            userPreferences.soundVolume.collect { vol ->
+                _uiState.update { it.copy(soundVolume = vol) }
+            }
+        }
         loadGameCounts()
 
         // Live analysis status from WorkManager; reload counts when queue drains
@@ -122,6 +135,14 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(darkMode = mode, pendingChanges = true) }
     }
 
+    fun onSoundEnabledChange(enabled: Boolean) {
+        _uiState.update { it.copy(soundEnabled = enabled, pendingChanges = true) }
+    }
+
+    fun onSoundVolumeChange(volume: Float) {
+        _uiState.update { it.copy(soundVolume = volume, pendingChanges = true) }
+    }
+
     /** Toggle a game type in/out of the sync exclusion list. Persists immediately. */
     fun toggleExcludedSyncType(type: String) {
         viewModelScope.launch {
@@ -140,6 +161,8 @@ class SettingsViewModel @Inject constructor(
             userPreferences.setEngineMode(state.engineMode)
             userPreferences.setDarkMode(state.darkMode)
             userPreferences.setAutoAnalyze(state.autoAnalyze)
+            userPreferences.setSoundEnabled(state.soundEnabled)
+            userPreferences.setSoundVolume(state.soundVolume)
             // Handle scheduler side-effects
             if (state.autoAnalyze && !prevAutoAnalyze) {
                 autoAnalysisScheduler.scheduleAllPending()
@@ -157,12 +180,16 @@ class SettingsViewModel @Inject constructor(
             val mode = userPreferences.engineMode.first()
             val dark = userPreferences.darkMode.first()
             val auto = userPreferences.autoAnalyze.first()
+            val soundOn = userPreferences.soundEnabled.first()
+            val soundVol = userPreferences.soundVolume.first()
             _uiState.update {
                 it.copy(
                     engineDepth = depth,
                     engineMode = mode,
                     darkMode = dark,
                     autoAnalyze = auto,
+                    soundEnabled = soundOn,
+                    soundVolume = soundVol,
                     pendingChanges = false
                 )
             }

@@ -46,5 +46,12 @@ data class MoveEvaluationEntity(
     /** Source of evalBefore: "cloud" | "stockfish" | "pending" */
     val evalBeforeSource: String = "stockfish",
     /** Source of evalAfter: "cloud" | "stockfish" | "pending" */
-    val evalAfterSource: String = "stockfish"
+    val evalAfterSource: String = "stockfish",
+    // ── Multi-PV alternative moves ────────────────────────────────────────────
+    /** SAN of the engine's 2nd-best move (from MultiPV=3 before-move analysis). */
+    val secondBestMove: String = "",
+    /** SAN of the engine's 3rd-best move. */
+    val thirdBestMove: String = "",
+    /** Centipawn eval of the 3rd-best move (White's perspective). Null if <3 moves available. */
+    val thirdBestMoveEval: Int? = null
 )

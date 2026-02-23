@@ -26,8 +26,8 @@ data class GamesUiState(
     val games: List<Game> = emptyList(),
     val isLoading: Boolean = false,
     val isSyncing: Boolean = false,
-    val selectedPlatform: Platform? = null,  // null = All
-    val selectedGameType: String? = null,    // null = All; "bullet"|"blitz"|"rapid"|"classical"|"daily"
+    val selectedPlatform: Platform? = null,       // null = All
+    val selectedGameTypes: Set<String> = emptySet(), // empty = All; multi-select
     val openingFilter: String? = null,       // set when navigated from Stats opening tap
     val syncMessage: String? = null,
     val hasAccounts: Boolean = false,
@@ -37,11 +37,6 @@ data class GamesUiState(
     val queuedGameIds: Set<String> = emptySet(),
     /** Game IDs currently in the auto-analysis queue (at most BATCH_SIZE at once). */
     val autoQueuedIds: Set<String> = emptySet(),
-    /**
-     * Hybrid-mode progress: maps gameId → count of moves already evaluated
-     * (cloud_hit + stockfish_done). Divide by game.totalMoves for a 0..1 fraction.
-     */
-    val dbProgressMap: Map<String, Int> = emptyMap()
 )
 
 @HiltViewModel
@@ -57,7 +52,7 @@ class GamesViewModel @Inject constructor(
     val uiState: StateFlow<GamesUiState> = _uiState.asStateFlow()
 
     private val _selectedPlatform = MutableStateFlow<Platform?>(null)
-    private val _selectedGameType = MutableStateFlow<String?>(null)
+    private val _selectedGameTypes = MutableStateFlow<Set<String>>(emptySet())
     private val _openingFilter = MutableStateFlow<String?>(null)
 
     /** Track which game IDs we've already started a WorkInfo observer for. */
@@ -77,17 +72,19 @@ class GamesViewModel @Inject constructor(
 
         // Phase 2: Observe games with platform + game type filters (replaces phase 1 when ready)
         viewModelScope.launch {
-            combine(_selectedPlatform, _selectedGameType, _openingFilter) { platform, gameType, opening ->
-                Triple(platform, gameType, opening)
+            combine(_selectedPlatform, _selectedGameTypes, _openingFilter) { platform, gameTypes, opening ->
+                Triple(platform, gameTypes, opening)
             }
-                .flatMapLatest { (platform, gameType, opening) ->
-                    getGamesUseCase(platform, gameType).map { games ->
+                .flatMapLatest { (platform, gameTypes, opening) ->
+                    getGamesUseCase(platform, null).map { games ->
+                        val typeFiltered = if (gameTypes.isEmpty()) games
+                        else games.filter { it.gameType in gameTypes }
                         if (opening != null) {
-                            games.filter { game ->
+                            typeFiltered.filter { game ->
                                 game.opening?.substringAfterLast("/")?.replace("-", " ")?.trim()
                                     ?.equals(opening, ignoreCase = true) == true
                             }
-                        } else games
+                        } else typeFiltered
                     }
                 }.collect { games ->
                 _uiState.update {
@@ -101,8 +98,6 @@ class GamesViewModel @Inject constructor(
 
                 // One-shot: on first game emission, reset any stuck ANALYZING games whose
                 // WorkManager job is no longer active (app was killed mid-analysis).
-                // CLOUD_DONE games are intentionally skipped — they have partial data and
-                // will be resumed by StockfishAnalysisWorker.
                 if (!stuckCheckDone) {
                     stuckCheckDone = true
                     viewModelScope.launch {
@@ -149,14 +144,6 @@ class GamesViewModel @Inject constructor(
             }
         }
 
-        // Observe hybrid progress from DB (cloud_hit + stockfish_done counts per game)
-        viewModelScope.launch {
-            gameRepository.observeProgressByGame().collect { rows ->
-                val map = rows.associate { it.gameId to it.doneCount }
-                _uiState.update { it.copy(dbProgressMap = map) }
-            }
-        }
-
         // Auto-sync silently on init (no "already up to date" toast)
         syncGames(silent = true)
     }
@@ -197,9 +184,15 @@ class GamesViewModel @Inject constructor(
         _uiState.update { it.copy(selectedPlatform = platform) }
     }
 
-    fun onGameTypeFilterChange(gameType: String?) {
-        _selectedGameType.value = gameType
-        _uiState.update { it.copy(selectedGameType = gameType) }
+    fun toggleGameTypeFilter(type: String?) {
+        val current = _selectedGameTypes.value.toMutableSet()
+        if (type == null) {
+            current.clear() // "All" clears everything
+        } else {
+            if (type in current) current.remove(type) else current.add(type)
+        }
+        _selectedGameTypes.value = current
+        _uiState.update { it.copy(selectedGameTypes = current) }
     }
 
     fun setOpeningFilter(opening: String?) {
@@ -240,7 +233,10 @@ class GamesViewModel @Inject constructor(
             )
         }
         val request = OneTimeWorkRequestBuilder<AnalysisWorker>()
-            .setInputData(workDataOf(AnalysisWorker.KEY_GAME_ID to gameId))
+            .setInputData(workDataOf(
+                AnalysisWorker.KEY_GAME_ID to gameId,
+                AnalysisWorker.KEY_IS_USER_REQUESTED to true
+            ))
             .addTag(gameId)
             .build()
         // APPEND_OR_REPLACE: if another game is running, this queues after it.

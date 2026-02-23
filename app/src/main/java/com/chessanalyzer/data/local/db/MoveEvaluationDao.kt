@@ -4,7 +4,6 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -59,28 +58,6 @@ interface MoveEvaluationDao {
     )
     suspend fun getWeaknessInsights(): List<WeaknessRow>
 
-    // ── Two-phase hybrid support ──────────────────────────────────────────────
-
-    /** All rows for a game that still need Stockfish evaluation. */
-    @Query("SELECT * FROM move_evaluations WHERE gameId = :gameId AND moveStatus = 'needs_stockfish' " +
-           "ORDER BY moveNumber ASC, CASE WHEN color = 'white' THEN 0 ELSE 1 END ASC")
-    suspend fun getNeedsStockfishRows(gameId: String): List<MoveEvaluationEntity>
-
-    /** Count of moves still waiting for Stockfish in a given game. */
-    @Query("SELECT COUNT(*) FROM move_evaluations WHERE gameId = :gameId AND moveStatus = 'needs_stockfish'")
-    suspend fun countNeedsStockfish(gameId: String): Int
-
-    /**
-     * Live count of completed moves per game (for progress cards in hybrid mode).
-     * "Done" = cloud_hit or stockfish_done.
-     */
-    @Query("SELECT gameId, COUNT(*) as doneCount FROM move_evaluations " +
-           "WHERE moveStatus IN ('cloud_hit', 'stockfish_done') GROUP BY gameId")
-    fun observeProgressByGame(): Flow<List<GameProgressRow>>
-
-    /** Update a single evaluation row in-place (used by StockfishPhaseUseCase). */
-    @Update
-    suspend fun updateEvaluation(row: MoveEvaluationEntity)
 }
 
 data class ClassificationCount(
@@ -97,8 +74,4 @@ data class WeaknessRow(
     val lossCount: Int
 )
 
-/** Per-game progress row for hybrid mode: how many moves are already resolved. */
-data class GameProgressRow(
-    val gameId: String,
-    val doneCount: Int
-)
+

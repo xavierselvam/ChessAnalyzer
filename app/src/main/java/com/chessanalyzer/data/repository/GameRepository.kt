@@ -2,7 +2,6 @@ package com.chessanalyzer.data.repository
 
 import com.chessanalyzer.data.local.db.GameDao
 import com.chessanalyzer.data.local.db.GameEntity
-import com.chessanalyzer.data.local.db.GameProgressRow
 import com.chessanalyzer.data.local.db.GameSummaryEntity
 import com.chessanalyzer.data.local.db.MoveEvaluationDao
 import com.chessanalyzer.data.local.db.MoveEvaluationEntity
@@ -107,30 +106,6 @@ class GameRepository @Inject constructor(
             )
         }
 
-    // ── Two-phase hybrid support ──────────────────────────────────────────────
-
-    /** IDs of all games with status 'pending'. No PGN loaded. */
-    suspend fun getPendingGameIds(): List<String> = gameDao.getPendingGameIds()
-
-    /** IDs of up to [limit] games with status 'cloud_done'. */
-    suspend fun getCloudDoneGameIds(limit: Int): List<String> =
-        gameDao.getCloudDoneGameIds(limit)
-
-    /** Live stream of done-move counts per game (for hybrid progress bars). */
-    fun observeProgressByGame(): Flow<List<GameProgressRow>> =
-        moveEvaluationDao.observeProgressByGame()
-
-    /** Update a single move evaluation row in-place. */
-    suspend fun updateEvaluation(row: MoveEvaluationEntity) =
-        moveEvaluationDao.updateEvaluation(row)
-
-    /** Rows for a game that still need Stockfish evaluation. */
-    suspend fun getNeedsStockfishRows(gameId: String): List<MoveEvaluationEntity> =
-        moveEvaluationDao.getNeedsStockfishRows(gameId)
-
-    /** All raw entity rows for a game (used by StockfishPhaseUseCase to compute accuracy). */
-    suspend fun getEvaluationsEntityForGame(gameId: String): List<MoveEvaluationEntity> =
-        moveEvaluationDao.getEvaluationsForGameSync(gameId)
 }
 
 // Extension functions for mapping
@@ -188,6 +163,9 @@ fun MoveEvaluationEntity.toDomain(): MoveEvaluation = MoveEvaluation(
     bestMove = bestMove,
     bestMoveEval = bestMoveEval,
     secondBestMoveEval = secondBestMoveEval,
+    secondBestMove = secondBestMove,
+    thirdBestMove = thirdBestMove,
+    thirdBestMoveEval = thirdBestMoveEval,
     classification = MoveClassification.fromString(classification),
     isMate = isMate,
     mateIn = mateIn,

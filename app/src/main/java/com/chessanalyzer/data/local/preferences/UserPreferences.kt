@@ -24,6 +24,8 @@ class UserPreferences @Inject constructor(
         val AUTO_ANALYZE = booleanPreferencesKey("auto_analyze")
         val DARK_MODE = stringPreferencesKey("dark_mode") // "system", "light", "dark"
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
+        /** Game types excluded from sync e.g. {"bullet", "blitz"} */
+        val EXCLUDED_SYNC_TYPES = stringSetPreferencesKey("excluded_sync_types")
     }
 
     val chessComUsername: Flow<String> = context.dataStore.data.map { prefs ->
@@ -52,6 +54,10 @@ class UserPreferences @Inject constructor(
 
     val lastSyncTime: Flow<Long> = context.dataStore.data.map { prefs ->
         prefs[LAST_SYNC_TIME] ?: 0L
+    }
+
+    val excludedSyncTypes: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[EXCLUDED_SYNC_TYPES] ?: emptySet()
     }
 
     suspend fun setChessComUsername(username: String) {
@@ -93,6 +99,12 @@ class UserPreferences @Inject constructor(
     suspend fun setLastSyncTime(time: Long) {
         context.dataStore.edit { prefs ->
             prefs[LAST_SYNC_TIME] = time
+        }
+    }
+
+    suspend fun setExcludedSyncTypes(types: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[EXCLUDED_SYNC_TYPES] = types
         }
     }
 }

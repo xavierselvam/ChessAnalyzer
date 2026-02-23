@@ -9,24 +9,17 @@ import androidx.work.workDataOf
 import com.chessanalyzer.data.local.preferences.UserPreferences
 import com.chessanalyzer.data.repository.GameRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Schedules background analysis, routing between two strategies:
- *
- * **Non-hybrid** ("local" | "cloud"): rolling batches of [BATCH_SIZE] games via
- * [AnalysisWorker] — the original behaviour.
- *
- * **Hybrid**: a single [CloudAnalysisWorker] that covers ALL pending games in
- * parallel cloud calls, then auto-chains to [StockfishAnalysisWorker] for deep
- * evaluation of cloud-miss moves.
- *
- * On every app start [scheduleAllPending] also resumes any interrupted
- * [StockfishAnalysisWorker] if "cloud_done" games are waiting.
+ * Schedules background analysis in rolling batches of [BATCH_SIZE] games via
+ * [AnalysisWorker]. Works for all engine modes (local / cloud / hybrid) — the
+ * per-move cloud-vs-Stockfish decision is made inside [AnalysisWorker] /
+ * [PositionEvaluator] based on the user's engine mode setting.
  */
 @Singleton
 class AutoAnalysisScheduler @Inject constructor(
@@ -36,12 +29,12 @@ class AutoAnalysisScheduler @Inject constructor(
 ) {
     companion object {
         private const val TAG = "AutoAnalysisScheduler"
-        const val BATCH_SIZE = 5
+        const val BATCH_SIZE = 1
     }
 
     /**
-     * Kick off (or continue) analysis based on the current engine mode.
-     * Safe to call multiple times — uses KEEP/APPEND policies so already-running
+     * Kick off (or continue) the next batch of [BATCH_SIZE] games.
+     * Safe to call multiple times — uses APPEND_OR_REPLACE so already-running
      * workers are not displaced.
      */
     suspend fun scheduleNextBatch() {
@@ -49,49 +42,15 @@ class AutoAnalysisScheduler @Inject constructor(
             Log.d(TAG, "Auto-analyze is OFF — skipping schedule")
             return
         }
-
-        val mode = userPreferences.engineMode.first()
-        if (mode == "hybrid") {
-            scheduleHybrid()
-        } else {
-            scheduleNonHybrid()
-        }
+        scheduleBatch()
     }
 
     /** Convenience alias used at app-level trigger points (sync complete, toggle ON). */
-    suspend fun scheduleAllPending() {
-        scheduleNextBatch()
-        // Always try to resume an interrupted Stockfish phase, regardless of mode,
-        // in case the app was killed while cloud_done games were waiting.
-        resumeStockfishPhaseIfNeeded()
-    }
+    suspend fun scheduleAllPending() = scheduleNextBatch()
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    /**
-     * Hybrid mode: enqueue a single [CloudAnalysisWorker] to cover all pending games.
-     * Uses KEEP policy — if one is already running, we don't start another.
-     */
-    private suspend fun scheduleHybrid() {
-        val pending = gameRepository.getPendingGameIds()
-        if (pending.isEmpty()) {
-            Log.d(TAG, "[hybrid] No pending games to cloud-analyze")
-            resumeStockfishPhaseIfNeeded()
-            return
-        }
-        Log.i(TAG, "[hybrid] Scheduling CloudAnalysisWorker for ${pending.size} pending game(s)")
-        val request = OneTimeWorkRequestBuilder<CloudAnalysisWorker>().build()
-        workManager.enqueueUniqueWork(
-            CloudAnalysisWorker.QUEUE_NAME,
-            ExistingWorkPolicy.KEEP,
-            request
-        )
-    }
-
-    /**
-     * Non-hybrid: rolling batch of [BATCH_SIZE] [AnalysisWorker] jobs.
-     */
-    private suspend fun scheduleNonHybrid() {
+    private suspend fun scheduleBatch() {
         val batch = gameRepository.getNextPendingGames(BATCH_SIZE)
         if (batch.isEmpty()) {
             Log.d(TAG, "No pending games — analysis complete")
@@ -112,23 +71,6 @@ class AutoAnalysisScheduler @Inject constructor(
             workManager
                 .beginUniqueWork(AnalysisWorker.QUEUE_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
                 .enqueue()
-        }
-    }
-
-    /**
-     * If any games are stuck at "cloud_done" (e.g. after an app kill mid-phase),
-     * enqueue a [StockfishAnalysisWorker] to resume them.
-     */
-    suspend fun resumeStockfishPhaseIfNeeded() {
-        val waiting = gameRepository.getCloudDoneGameIds(1)
-        if (waiting.isNotEmpty()) {
-            Log.i(TAG, "Resuming Stockfish phase: ${waiting.size}+ cloud_done game(s) found")
-            val request = OneTimeWorkRequestBuilder<StockfishAnalysisWorker>().build()
-            workManager.enqueueUniqueWork(
-                StockfishAnalysisWorker.QUEUE_NAME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
         }
     }
 
@@ -183,8 +125,6 @@ class AutoAnalysisScheduler @Inject constructor(
     fun cancelAll() {
         Log.i(TAG, "Cancelling all auto-analysis jobs")
         workManager.cancelUniqueWork(AnalysisWorker.QUEUE_NAME)
-        workManager.cancelUniqueWork(CloudAnalysisWorker.QUEUE_NAME)
-        workManager.cancelUniqueWork(StockfishAnalysisWorker.QUEUE_NAME)
     }
 }
 

@@ -12,6 +12,9 @@ data class MoveEvaluation(
     val bestMove: String,          // engine best move SAN
     val bestMoveEval: Int,         // eval after best move (White's perspective)
     val secondBestMoveEval: Int?,  // eval of second-best move (for brilliant/great detection)
+    val secondBestMove: String = "",    // SAN of engine's 2nd-best move
+    val thirdBestMove: String = "",     // SAN of engine's 3rd-best move
+    val thirdBestMoveEval: Int? = null, // centipawn eval of 3rd-best move
     val classification: MoveClassification,
     val isMate: Boolean = false,
     val mateIn: Int? = null,

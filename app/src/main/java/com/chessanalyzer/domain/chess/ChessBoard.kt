@@ -322,6 +322,57 @@ data class ChessBoard(
         return true
     }
 
+    /**
+     * Returns all pseudo-legal destination squares for the piece on [square].
+     * "Pseudo-legal" means it respects piece movement rules and own-piece blocking but does
+     * NOT filter moves that leave the king in check — sufficient for UI highlighting.
+     */
+    fun legalTargetsFor(square: String): Set<String> {
+        val (fromRank, fromFile) = try { squareToIndices(square) } catch (_: Exception) { return emptySet() }
+        val piece = getPiece(fromRank, fromFile) ?: return emptySet()
+        val isWhitePiece = piece.isUpperCase()
+        if (isWhitePiece != (activeColor == 'w')) return emptySet()
+
+        val targets = mutableSetOf<String>()
+        for (rank in 0..7) {
+            for (file in 0..7) {
+                val occupant = squares[rank][file]
+                if (occupant != null && occupant.isUpperCase() == isWhitePiece) continue // own piece
+                if (canMoveTo(piece, fromRank, fromFile, rank, file)) {
+                    targets.add(indicesToSquare(rank, file))
+                }
+            }
+        }
+
+        // Castling — king large-step handled separately from canMoveTo
+        if (piece.lowercaseChar() == 'k') {
+            if (activeColor == 'w' && fromRank == 7 && fromFile == 4) {
+                if ('K' in castlingRights && squares[7][5] == null && squares[7][6] == null) targets.add("g1")
+                if ('Q' in castlingRights && squares[7][3] == null && squares[7][2] == null && squares[7][1] == null) targets.add("c1")
+            } else if (activeColor == 'b' && fromRank == 0 && fromFile == 4) {
+                if ('k' in castlingRights && squares[0][5] == null && squares[0][6] == null) targets.add("g8")
+                if ('q' in castlingRights && squares[0][3] == null && squares[0][2] == null && squares[0][1] == null) targets.add("c8")
+            }
+        }
+        return targets
+    }
+
+    /**
+     * Apply a move using from/to algebraic squares (e.g. "e2", "e4").
+     * Pawns reaching the back rank auto-promote to queen.
+     */
+    fun applyMoveSquares(fromSquare: String, toSquare: String): ChessBoard {
+        val (fromRank, fromFile) = squareToIndices(fromSquare)
+        val (toRank, toFile) = squareToIndices(toSquare)
+        val piece = getPiece(fromRank, fromFile) ?: return this
+        val promotion = when {
+            piece == 'P' && toRank == 0 -> 'Q'
+            piece == 'p' && toRank == 7 -> 'q'
+            else -> null
+        }
+        return applyMove(Move(fromRank, fromFile, toRank, toFile, promotion))
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ChessBoard) return false

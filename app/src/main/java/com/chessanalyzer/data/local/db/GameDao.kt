@@ -94,14 +94,6 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE analysisStatus = 'pending' ORDER BY playedAt DESC LIMIT :limit")
     suspend fun getNextPendingGames(limit: Int): List<GameEntity>
 
-    /** Returns all pending game IDs only (no PGN). Used by CloudPhaseUseCase. */
-    @Query("SELECT id FROM games WHERE analysisStatus = 'pending' ORDER BY playedAt DESC")
-    suspend fun getPendingGameIds(): List<String>
-
-    /** Returns up to [limit] cloud_done game IDs (cloud phase done, Stockfish pending). */
-    @Query("SELECT id FROM games WHERE analysisStatus = 'cloud_done' ORDER BY playedAt DESC LIMIT :limit")
-    suspend fun getCloudDoneGameIds(limit: Int): List<String>
-
     @Query("DELETE FROM games")
     suspend fun deleteAllGames()
 }

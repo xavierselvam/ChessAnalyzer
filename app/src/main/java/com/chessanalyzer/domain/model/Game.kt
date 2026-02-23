@@ -66,14 +66,13 @@ enum class GameResult(val display: String) {
 }
 
 enum class AnalysisStatus {
-    PENDING, ANALYZING, CLOUD_DONE, DONE;
+    PENDING, ANALYZING, DONE;
 
     companion object {
         fun fromString(s: String): AnalysisStatus = when (s) {
-            "analyzing"  -> ANALYZING
-            "cloud_done" -> CLOUD_DONE
-            "done"       -> DONE
-            else         -> PENDING
+            "analyzing" -> ANALYZING
+            "done"      -> DONE
+            else        -> PENDING
         }
     }
 

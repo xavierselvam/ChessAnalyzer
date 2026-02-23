@@ -56,6 +56,12 @@ class PositionEvaluator @Inject constructor(
         val result = computeMultiPV(fen, depth, mode)
         persist(key, result, mpv = 3)
         memCache[key] = result
+
+        // Cross-populate the mpv1 cache key so evaluateSingle() on the same FEN is a
+        // free cache hit — effectiveCp and bestMoveUci are identical regardless of mpv count.
+        val mpv1Key = cacheKey(fen, depth, mode, mpv = 1)
+        if (!memCache.containsKey(mpv1Key)) memCache[mpv1Key] = result
+
         return result
     }
 

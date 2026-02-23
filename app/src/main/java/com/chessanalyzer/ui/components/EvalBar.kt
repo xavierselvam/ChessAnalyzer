@@ -25,12 +25,17 @@ import kotlin.math.exp
  * so ±500cp ≈ 85%/15% and ±100cp ≈ 60%/40%, matching real engine assessments.
  *
  * The bar animates smoothly as the position changes (200ms ease-in-out).
+ *
+ * @param vertical  When true renders as a vertical bar (black top, white bottom),
+ *                  Lichess-style, suitable for placement alongside the chessboard.
+ *                  The caller controls the exact size via [modifier].
  */
 @Composable
 fun EvalBar(
     centipawns: Int,
     isMate: Boolean = false,
     mateIn: Int? = null,
+    vertical: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val evalText = when {
@@ -47,56 +52,91 @@ fun EvalBar(
         else -> (1.0 / (1.0 + exp(-0.004 * centipawns))).toFloat()
     }
 
-    // Smooth animated transition — 200ms ease-in-out, matching CSS transition
     val whiteFraction by animateFloatAsState(
         targetValue = targetFraction,
         animationSpec = tween(durationMillis = 200),
         label = "evalBarFraction"
     )
 
-    Row(
-        modifier = modifier
-            .height(30.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp)),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Black side (left)
-        if (1f - whiteFraction > 0.001f) {
-            Box(
-                modifier = Modifier
-                    .weight(1f - whiteFraction)
-                    .fillMaxHeight()
-                    .background(Color(0xFF1A1A1A)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (whiteFraction < 0.38f) {
-                    Text(
-                        text = evalText,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+    if (vertical) {
+        // ── Vertical bar: black on top, white on bottom ───────────────────
+        Column(
+            modifier = modifier.clip(RoundedCornerShape(3.dp))
+        ) {
+            // Black segment (top)
+            if (1f - whiteFraction > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f - whiteFraction)
+                        .fillMaxWidth()
+                        .background(Color(0xFF1A1A1A)),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    if (whiteFraction < 0.35f) {
+                        Text(
+                            text = evalText,
+                            color = Color.White,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+            }
+            // White segment (bottom)
+            if (whiteFraction > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .weight(whiteFraction)
+                        .fillMaxWidth()
+                        .background(Color(0xFFF0F0F0)),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    if (whiteFraction >= 0.35f) {
+                        Text(
+                            text = evalText,
+                            color = Color(0xFF1A1A1A),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
                 }
             }
         }
-
-        // White side (right)
-        if (whiteFraction > 0.001f) {
-            Box(
-                modifier = Modifier
-                    .weight(whiteFraction)
-                    .fillMaxHeight()
-                    .background(Color(0xFFF0F0F0)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (whiteFraction >= 0.38f) {
-                    Text(
-                        text = evalText,
-                        color = Color(0xFF1A1A1A),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+    } else {
+        // ── Horizontal bar (original behaviour) ──────────────────────────
+        Row(
+            modifier = modifier
+                .height(22.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (1f - whiteFraction > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f - whiteFraction)
+                        .fillMaxHeight()
+                        .background(Color(0xFF1A1A1A)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (whiteFraction < 0.38f) {
+                        Text(text = evalText, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            if (whiteFraction > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .weight(whiteFraction)
+                        .fillMaxHeight()
+                        .background(Color(0xFFF0F0F0)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (whiteFraction >= 0.38f) {
+                        Text(text = evalText, color = Color(0xFF1A1A1A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

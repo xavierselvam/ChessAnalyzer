@@ -1,6 +1,7 @@
 package com.chessanalyzer.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -11,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -24,6 +26,10 @@ import com.chessanalyzer.ui.theme.LightBoardLight
 private val LastMoveHighlight = Color(0xCCF6F669)  // translucent yellow
 // Arrow color for the engine best-move suggestion (green)
 private val BestMoveArrowColor = Color(0xCC22C55E) // translucent green
+// Arrow color for actual played move (bad moves)
+private val ActualMoveArrowColor = Color(0xCCEF4444) // red
+// Selected square + legal dot color (blue)
+private val SelectionColor = Color(0xAA3B82F4)
 
 @Composable
 fun ChessBoardView(
@@ -37,15 +43,42 @@ fun ChessBoardView(
     /** Algebraic square for the engine best-move FROM arrow (shown when different from played) */
     bestMoveFrom: String? = null,
     /** Algebraic square for the engine best-move TO arrow */
-    bestMoveTo: String? = null
+    bestMoveTo: String? = null,
+    /** Actual played move FROM arrow — shown colored when it differs from best move */
+    actualMoveFrom: String? = null,
+    /** Actual played move TO arrow */
+    actualMoveTo: String? = null,
+    /** Color for the actual move arrow — pass classification color (red/orange) */
+    actualMoveColor: Color = ActualMoveArrowColor,
+    /** Explore mode: currently selected square (highlighted blue) */
+    selectedSquare: String? = null,
+    /** Explore mode: squares the selected piece can legally move to (dots/rings) */
+    legalTargets: Set<String> = emptySet(),
+    /** Explore mode: tap callback — returns the algebraic square that was tapped */
+    onSquareTap: ((String) -> Unit)? = null
 ) {
     val board = ChessBoard.fromFen(fen)
     val textMeasurer = rememberTextMeasurer()
+
+    val tapModifier = if (onSquareTap != null) {
+        Modifier.pointerInput(flipped, onSquareTap) {
+            detectTapGestures { offset ->
+                val sqSize = size.width / 8f
+                val col = (offset.x / sqSize).toInt().coerceIn(0, 7)
+                val row = (offset.y / sqSize).toInt().coerceIn(0, 7)
+                val displayFile = if (flipped) 7 - col else col
+                val displayRank = if (flipped) 7 - row else row
+                val square = "${'a' + displayFile}${8 - displayRank}"
+                onSquareTap(square)
+            }
+        }
+    } else Modifier
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .then(tapModifier)
     ) {
         val squareSize = size.width / 8f
 
@@ -56,13 +89,11 @@ fun ChessBoardView(
 
                 val algebraic = "${'a' + displayFile}${8 - displayRank}"
                 val isLastMove = algebraic == lastMoveFrom || algebraic == lastMoveTo
+                val isSelected = algebraic == selectedSquare
 
                 val isLight = (rank + file) % 2 == 0
                 val squareColor = when {
-                    isLastMove -> if (isLight)
-                        Color(0xFFEDD16A)   // highlighted light square
-                    else
-                        Color(0xFFB8AA2D)   // highlighted dark square
+                    isLastMove -> if (isLight) Color(0xFFEDD16A) else Color(0xFFB8AA2D)
                     else -> if (isLight) LightBoardLight else LightBoardDark
                 }
 
@@ -70,11 +101,16 @@ fun ChessBoardView(
                 val y = rank * squareSize
 
                 // Draw square
-                drawRect(
-                    color = squareColor,
-                    topLeft = Offset(x, y),
-                    size = Size(squareSize, squareSize)
-                )
+                drawRect(color = squareColor, topLeft = Offset(x, y), size = Size(squareSize, squareSize))
+
+                // Selected square highlight (blue overlay)
+                if (isSelected) {
+                    drawRect(
+                        color = SelectionColor,
+                        topLeft = Offset(x, y),
+                        size = Size(squareSize, squareSize)
+                    )
+                }
 
                 // Draw piece
                 val piece = board.getPiece(displayRank, displayFile)
@@ -82,12 +118,8 @@ fun ChessBoardView(
                     val pieceSymbol = getPieceUnicode(piece)
                     val textLayout = textMeasurer.measure(
                         text = pieceSymbol,
-                        style = TextStyle(
-                            fontSize = (squareSize * 0.72f).toSp(),
-                            color = Color.Unspecified
-                        )
+                        style = TextStyle(fontSize = (squareSize * 0.72f).toSp(), color = Color.Unspecified)
                     )
-                    // Shadow / outline for piece legibility
                     drawText(
                         textLayoutResult = textLayout,
                         color = if (piece.isUpperCase()) Color(0xFFFFFFFF) else Color(0xFF111111),
@@ -97,11 +129,36 @@ fun ChessBoardView(
                         )
                     )
                 }
+
+                // Legal move indicator — dot on empty, ring on occupied
+                if (algebraic in legalTargets) {
+                    val center = Offset(x + squareSize / 2, y + squareSize / 2)
+                    if (piece != null) {
+                        drawCircle(color = SelectionColor, radius = squareSize * 0.46f, center = center,
+                            style = Stroke(width = squareSize * 0.09f))
+                    } else {
+                        drawCircle(color = SelectionColor, radius = squareSize * 0.16f, center = center)
+                    }
+                }
             }
         }
 
         // Draw rank/file labels on the border squares
         drawBoardLabels(flipped, squareSize, textMeasurer)
+
+        // Draw actual-move arrow UNDER best-move so green is always on top
+        if (actualMoveFrom != null && actualMoveTo != null) {
+            val fromIdx = squareToVisualIndices(actualMoveFrom, flipped)
+            val toIdx = squareToVisualIndices(actualMoveTo, flipped)
+            if (fromIdx != null && toIdx != null) {
+                drawArrow(
+                    fromCenter = Offset((fromIdx.second + 0.5f) * squareSize, (fromIdx.first + 0.5f) * squareSize),
+                    toCenter   = Offset((toIdx.second   + 0.5f) * squareSize, (toIdx.first   + 0.5f) * squareSize),
+                    color = actualMoveColor,
+                    squareSize = squareSize
+                )
+            }
+        }
 
         // Draw best-move arrow on top of everything
         if (bestMoveFrom != null && bestMoveTo != null) {

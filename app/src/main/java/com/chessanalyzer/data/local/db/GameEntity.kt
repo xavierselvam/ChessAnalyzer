@@ -26,7 +26,7 @@ data class GameEntity(
     val timeControl: String,
     val playedAt: Long,                // epoch millis
     val opening: String? = null,
-    val analysisStatus: String = "pending",  // "pending" | "analyzing" | "cloud_done" | "done"
+    val analysisStatus: String = "pending",  // "pending" | "analyzing" | "done"
     val userColor: String,             // "white" | "black"
     val whiteAccuracy: Float? = null,
     val blackAccuracy: Float? = null,

@@ -38,7 +38,8 @@ class AnalysisWorker @AssistedInject constructor(
         const val KEY_GAME_ID = "game_id"
         const val KEY_GAME_INDEX = "game_index"      // 1-based position within the batch
         const val KEY_GAME_TOTAL = "game_total"      // batch size
-        const val KEY_IS_LAST_IN_BATCH = "is_last"   // true → schedule next batch on success
+        const val KEY_IS_LAST_IN_BATCH = "is_last"
+        const val KEY_IS_USER_REQUESTED = "is_user_requested"
         const val KEY_PROGRESS = "progress"
         private const val NOTIFICATION_CHANNEL_ID = "chess_analysis_channel"
         private const val NOTIFICATION_ID = 2001
@@ -63,12 +64,13 @@ class AnalysisWorker @AssistedInject constructor(
         val gameIndex = inputData.getInt(KEY_GAME_INDEX, 0)
         val gameTotal = inputData.getInt(KEY_GAME_TOTAL, 0)
         val isLastInBatch = inputData.getBoolean(KEY_IS_LAST_IN_BATCH, false)
+        val isUserRequested = inputData.getBoolean(KEY_IS_USER_REQUESTED, false)
 
         Log.i(TAG, "Starting analysis for game $gameId ($gameIndex/$gameTotal, last=$isLastInBatch)")
         trySetForeground(buildForegroundInfo(0f))
 
         return try {
-            analyzeGameUseCase.invoke(gameId).collect { progress ->
+            analyzeGameUseCase.invoke(gameId, isUserRequested).collect { progress ->
                 setProgress(workDataOf(
                     KEY_PROGRESS to progress.percentage,
                     KEY_GAME_INDEX to gameIndex,

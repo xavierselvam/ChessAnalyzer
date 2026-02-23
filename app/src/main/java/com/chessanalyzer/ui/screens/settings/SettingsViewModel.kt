@@ -30,7 +30,8 @@ data class SettingsUiState(
     val analyzedGames: Int = 0,
     val analysisStatus: String? = null,
     /** True when Analysis or Appearance settings have been changed but not yet saved. */
-    val pendingChanges: Boolean = false
+    val pendingChanges: Boolean = false,
+    val excludedSyncTypes: Set<String> = emptySet()
 )
 
 @HiltViewModel
@@ -68,6 +69,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.engineMode.collect { mode ->
                 _uiState.update { it.copy(engineMode = mode) }
+            }
+        }
+        // Watch excluded sync types
+        viewModelScope.launch {
+            userPreferences.excludedSyncTypes.collect { types ->
+                _uiState.update { it.copy(excludedSyncTypes = types) }
             }
         }
         loadGameCounts()
@@ -113,6 +120,15 @@ class SettingsViewModel @Inject constructor(
 
     fun onDarkModeChange(mode: String) {
         _uiState.update { it.copy(darkMode = mode, pendingChanges = true) }
+    }
+
+    /** Toggle a game type in/out of the sync exclusion list. Persists immediately. */
+    fun toggleExcludedSyncType(type: String) {
+        viewModelScope.launch {
+            val current = userPreferences.excludedSyncTypes.first().toMutableSet()
+            if (type in current) current.remove(type) else current.add(type)
+            userPreferences.setExcludedSyncTypes(current)
+        }
     }
 
     /** Persists all Analysis + Appearance settings in one go. */

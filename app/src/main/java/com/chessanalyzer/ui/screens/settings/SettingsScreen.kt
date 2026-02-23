@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.chessanalyzer.ui.screens.games.gameTypeOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,6 +94,31 @@ fun SettingsScreen(
                 isValidating = uiState.isValidatingLichess,
                 isValid = uiState.lichessValid
             )
+
+            HorizontalDivider()
+
+            // --- Sync Filters Section ---
+            Text(text = "Sync Filters", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = "Exclude game types from being imported during sync.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            gameTypeOptions
+                .filter { (type, _) -> type != null }
+                .forEach { (type, label) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                        Switch(
+                            checked = type!! !in uiState.excludedSyncTypes,
+                            onCheckedChange = { viewModel.toggleExcludedSyncType(type) }
+                        )
+                    }
+                }
 
             HorizontalDivider()
 

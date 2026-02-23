@@ -227,18 +227,6 @@ fun GameCard(
                             }
                         }
                     }
-                    AnalysisStatus.CLOUD_DONE -> {
-                        // Cloud phase complete; waiting for Stockfish deep analysis
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Text(
-                            text = "Deep…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                     AnalysisStatus.PENDING -> {
                         if (isQueued) {
                             Icon(

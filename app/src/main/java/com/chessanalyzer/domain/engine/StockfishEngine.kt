@@ -3,6 +3,8 @@ package com.chessanalyzer.domain.engine
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
@@ -38,6 +40,14 @@ class StockfishEngine @Inject constructor(
 
     @Volatile
     private var isRunning = false
+
+    /** Serialises all engine calls — only one evaluate()/start()/stop() at a time.
+     *  This is needed because AUTO_MUTEX and USER_MUTEX are separate, so two
+     *  coroutines could otherwise reach evaluate() simultaneously. */
+    private val engineLock = Mutex()
+
+    /** Tracks the last MultiPV value sent to Stockfish to skip redundant setoption calls. */
+    @Volatile private var currentMultiPv: Int = 3
 
     /** Single PV line result from the engine. */
     data class PvLine(
@@ -93,7 +103,7 @@ class StockfishEngine @Inject constructor(
             waitForResponse("uciok")
 
             val cpuCores = Runtime.getRuntime().availableProcessors()
-            sendCommand("setoption name Threads value $cpuCores")
+            sendCommand("setoption name Threads value 3")
             sendCommand("setoption name Hash value 256")
             sendCommand("setoption name MultiPV value 3")
             sendCommand("setoption name UCI_ShowWDL value true")
@@ -102,7 +112,7 @@ class StockfishEngine @Inject constructor(
             waitForResponse("readyok")
 
             isRunning = true
-            Log.i(TAG, "Stockfish started (threads=$cpuCores, hash=256, multipv=3, wdl=true)")
+            Log.i(TAG, "Stockfish started (threads=3, hash=256, multipv=3, wdl=true)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Stockfish", e)
             stop()
@@ -112,7 +122,7 @@ class StockfishEngine @Inject constructor(
     fun stop() {
         try { if (isRunning) sendCommand("quit") } catch (_: Exception) {}
         try { writer?.close(); reader?.close(); process?.destroy() } catch (_: Exception) {}
-        writer = null; reader = null; process = null; isRunning = false
+        writer = null; reader = null; process = null; isRunning = false; currentMultiPv = 3
     }
 
     /**
@@ -127,13 +137,17 @@ class StockfishEngine @Inject constructor(
         depth: Int = 20,
         multiPv: Int = 3
     ): EvalResult = withContext(Dispatchers.IO) {
+        engineLock.withLock {
         if (!isRunning) start()
 
         val sideToMove = fen.split(" ").getOrElse(1) { "w" }[0]
 
-        sendCommand("setoption name MultiPV value $multiPv")
-        sendCommand("isready")
-        waitForResponse("readyok")
+        if (multiPv != currentMultiPv) {
+            sendCommand("setoption name MultiPV value $multiPv")
+            sendCommand("isready")
+            waitForResponse("readyok")
+            currentMultiPv = multiPv
+        }
 
         sendCommand("position fen $fen")
         sendCommand("go depth $depth")
@@ -198,6 +212,7 @@ class StockfishEngine @Inject constructor(
             pvLines = whiteOrientedPvLines,
             wdl = bestPv?.wdl
         )
+        } // end engineLock.withLock
     }
 
     /** Evaluate with single PV (faster for after-move evals). */

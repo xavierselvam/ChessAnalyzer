@@ -35,9 +35,11 @@ class AnalyzeGameUseCase @Inject constructor(
     private val userPreferences: UserPreferences
 ) {
     companion object {
-        /** Ensures only one AnalyzeGameUseCase invocation uses Stockfish at a time,
-         *  regardless of which WorkManager queue triggered it. */
-        val ENGINE_MUTEX = Mutex()
+        /** Serialises all background (auto) analysis jobs — max 1 Stockfish for auto at a time. */
+        val AUTO_MUTEX = Mutex()
+        /** Serialises all user-requested analysis jobs — max 1 Stockfish for user at a time.
+         *  Distinct from AUTO_MUTEX so a user request can run concurrently with an auto job. */
+        val USER_MUTEX = Mutex()
     }
     data class AnalysisProgress(
         val currentMove: Int,
@@ -45,15 +47,21 @@ class AnalyzeGameUseCase @Inject constructor(
         val percentage: Float
     )
 
-    fun invoke(gameId: String): Flow<AnalysisProgress> = flow {
+    fun invoke(gameId: String, isUserRequested: Boolean = false): Flow<AnalysisProgress> = flow {
         val game = gameRepository.getGameById(gameId) ?: return@flow
 
         gameRepository.updateAnalysisStatus(gameId, AnalysisStatus.ANALYZING)
 
-        ENGINE_MUTEX.withLock {
+        val mutex = if (isUserRequested) USER_MUTEX else AUTO_MUTEX
+        Log.i("AnalyzeGameUseCase", "[$gameId] acquiring ${if (isUserRequested) "USER_MUTEX" else "AUTO_MUTEX"}")
+        mutex.withLock {
+        Log.i("AnalyzeGameUseCase", "[$gameId] lock acquired — starting engine (isUserRequested=$isUserRequested)")
 
         val depth = userPreferences.engineDepth.first()
         val mode = userPreferences.engineMode.first() // "local" | "cloud" | "hybrid"
+        // Cap auto-analysis to depth 10 — fast enough for background work.
+        // User-requested analysis uses the full configured depth for review quality.
+        val effectiveDepth = if (isUserRequested) depth else minOf(depth, 10)
 
         try {
             val positions = PgnParser.parseToPositions(game.pgn)
@@ -68,9 +76,11 @@ class AnalyzeGameUseCase @Inject constructor(
             val moveList = pgnGame?.moves ?: emptyList()
             val openingName = OpeningDetector.detect(moveList)
 
-            // Start Stockfish for local and hybrid modes (hybrid uses it as fallback)
-            if (mode != "cloud") stockfishEngine.start()
-            positionEvaluator.clearCache()
+            // NOTE: Stockfish starts lazily inside StockfishEngine.evaluate() via the
+            // engineLock — we do NOT call start()/stop() here so the engine and its
+            // NNUE weights stay loaded across successive games (avoids ~1-3s reload per game).
+            // NOTE: do NOT clearCache() here — in-memory cache persists across games
+            // within the same session so shared opening positions are reused.
 
             val evaluations = mutableListOf<MoveEvaluationEntity>()
             val totalMoves = positions.size - 1
@@ -90,18 +100,40 @@ class AnalyzeGameUseCase @Inject constructor(
                 val color = if (isWhite) "white" else "black"
 
                 // Step 1: Analyze position BEFORE with MultiPV=3
-                val beforeEval = positionEvaluator.evaluateMultiPV(prevFen, depth, mode)
+                val beforeEval = positionEvaluator.evaluateMultiPV(prevFen, effectiveDepth, mode)
 
                 // Emit mid-move progress (halfway through this move's two engine calls)
                 val moveMid = (i - 0.5f) / totalMoves
                 emit(AnalysisProgress(i, totalMoves, moveMid))
 
                 // Step 2: Analyze position AFTER actual move with MultiPV=1
-                val afterEval = positionEvaluator.evaluateSingle(currentFen, depth, mode)
+                // Note: evaluateMultiPV cross-caches under the mpv1 key so this is typically
+                // a free cache hit — currentFen == prevFen of the next iteration.
+                val afterEval = positionEvaluator.evaluateSingle(currentFen, effectiveDepth, mode)
 
                 // Extract PV line evaluations
                 val bestEval = beforeEval.effectiveCp          // White's perspective
                 val secondBestEval = beforeEval.pvLines.getOrNull(1)?.let { pvLine ->
+                    if (pvLine.isMate && pvLine.mateIn != null) {
+                        val sign = if (pvLine.mateIn > 0) 1 else -1
+                        sign * (10000 - kotlin.math.abs(pvLine.mateIn) * 100)
+                    } else pvLine.centipawns
+                }
+                // 2nd best move SAN
+                val secondBestMoveSan: String = run {
+                    val uci = beforeEval.pvLines.getOrNull(1)?.pv?.split(" ")?.firstOrNull() ?: ""
+                    if (uci.length >= 4) {
+                        try { uciToSan(ChessBoard.fromFen(prevFen), uci) ?: uci } catch (_: Exception) { uci }
+                    } else ""
+                }
+                // 3rd best move SAN + eval
+                val thirdBestMoveSan: String = run {
+                    val uci = beforeEval.pvLines.getOrNull(2)?.pv?.split(" ")?.firstOrNull() ?: ""
+                    if (uci.length >= 4) {
+                        try { uciToSan(ChessBoard.fromFen(prevFen), uci) ?: uci } catch (_: Exception) { uci }
+                    } else ""
+                }
+                val thirdBestMoveEval: Int? = beforeEval.pvLines.getOrNull(2)?.let { pvLine ->
                     if (pvLine.isMate && pvLine.mateIn != null) {
                         val sign = if (pvLine.mateIn > 0) 1 else -1
                         sign * (10000 - kotlin.math.abs(pvLine.mateIn) * 100)
@@ -174,6 +206,9 @@ class AnalyzeGameUseCase @Inject constructor(
                         bestMove = bestMoveSan,
                         bestMoveEval = bestEval,
                         secondBestMoveEval = secondBestEval,
+                        secondBestMove = secondBestMoveSan,
+                        thirdBestMove = thirdBestMoveSan,
+                        thirdBestMoveEval = thirdBestMoveEval,
                         classification = classification.toDbString(),
                         isMate = afterEval.isMate,
                         mateIn = afterEval.mateIn,
@@ -187,7 +222,7 @@ class AnalyzeGameUseCase @Inject constructor(
                 )
             }
 
-            if (mode != "cloud") stockfishEngine.stop()
+            // Engine intentionally NOT stopped — keeps NNUE loaded for the next game.
 
             // Save evaluations
             gameRepository.deleteEvaluationsForGame(gameId)
@@ -220,11 +255,11 @@ class AnalyzeGameUseCase @Inject constructor(
 
             emit(AnalysisProgress(totalMoves, totalMoves, 1f))
         } catch (e: Exception) {
-            if (mode != "cloud") stockfishEngine.stop()
+            // Engine intentionally NOT stopped on failure — will auto-restart on next evaluate().
             gameRepository.updateAnalysisStatus(gameId, AnalysisStatus.PENDING)
             throw e
         }
-        } // end ENGINE_MUTEX.withLock
+        } // end mutex.withLock
     } // end flow
 
     /** Convert UCI move (e.g. "e2e4") to SAN on the given board. Best effort. */

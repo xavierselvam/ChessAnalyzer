@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.chessanalyzer.domain.model.*
 import com.chessanalyzer.ui.components.GameCard
+import kotlinx.coroutines.launch
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +41,8 @@ fun GamesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(initialOpeningFilter) {
         viewModel.setOpeningFilter(initialOpeningFilter)
@@ -51,6 +55,76 @@ fun GamesScreen(
         }
     }
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(260.dp)) {
+                Text(
+                    "Filters",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 12.dp)
+                )
+                HorizontalDivider()
+                Text(
+                    "Platform",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                listOf(null to "All", Platform.CHESS_COM to "Chess.com", Platform.LICHESS to "Lichess")
+                    .forEach { (platform, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.onPlatformFilterChange(platform) }
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.selectedPlatform == platform,
+                                onClick = { viewModel.onPlatformFilterChange(platform) }
+                            )
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    "Game Type",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.toggleGameTypeFilter(null) }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = uiState.selectedGameTypes.isEmpty(),
+                        onCheckedChange = { viewModel.toggleGameTypeFilter(null) }
+                    )
+                    Text("All", style = MaterialTheme.typography.bodyMedium)
+                }
+                gameTypeOptions.filter { it.first != null }.forEach { (type, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.toggleGameTypeFilter(type) }
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = type in uiState.selectedGameTypes,
+                            onCheckedChange = { viewModel.toggleGameTypeFilter(type) }
+                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -65,6 +139,10 @@ fun GamesScreen(
                     if (onBackClick != null) {
                         IconButton(onClick = onBackClick) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                    } else {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Filters")
                         }
                     }
                 },
@@ -91,19 +169,7 @@ fun GamesScreen(
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            // Platform filter chips
-            PlatformFilterChips(
-                selected = uiState.selectedPlatform,
-                onSelect = viewModel::onPlatformFilterChange
-            )
-
-            // Game type filter chips
-            GameTypeFilterChips(
-                selected = uiState.selectedGameType,
-                onSelect = viewModel::onGameTypeFilterChange
-            )
-
-            // Opening filter chip (shown when navigated from Stats)
+            // Opening filter chip shown inline when navigated from Stats
             uiState.openingFilter?.let { opening ->
                 OpeningFilterChip(
                     opening = opening,
@@ -141,39 +207,11 @@ fun GamesScreen(
                 }
             }
         }
-    }
+    }   // closes Scaffold
+    }   // closes ModalNavigationDrawer
 }
 
-@Composable
-private fun PlatformFilterChips(
-    selected: Platform?,
-    onSelect: (Platform?) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChip(
-            selected = selected == null,
-            onClick = { onSelect(null) },
-            label = { Text("All") }
-        )
-        FilterChip(
-            selected = selected == Platform.CHESS_COM,
-            onClick = { onSelect(Platform.CHESS_COM) },
-            label = { Text("Chess.com") }
-        )
-        FilterChip(
-            selected = selected == Platform.LICHESS,
-            onClick = { onSelect(Platform.LICHESS) },
-            label = { Text("Lichess") }
-        )
-    }
-}
-
-private val gameTypeOptions = listOf(
+val gameTypeOptions = listOf(
     null to "All",
     "bullet" to "Bullet",
     "blitz" to "Blitz",
@@ -181,28 +219,6 @@ private val gameTypeOptions = listOf(
     "classical" to "Classical",
     "daily" to "Daily"
 )
-
-@Composable
-private fun GameTypeFilterChips(
-    selected: String?,
-    onSelect: (String?) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        gameTypeOptions.forEach { (type, label) ->
-            FilterChip(
-                selected = selected == type,
-                onClick = { onSelect(type) },
-                label = { Text(label) }
-            )
-        }
-    }
-}
 
 @Composable
 private fun OpeningFilterChip(opening: String, onClear: () -> Unit) {
@@ -349,7 +365,11 @@ private fun GamesList(
                         }
 
                         if (monthExpanded) {
-                            items(monthGroup.games, key = { it.id }) { game ->
+                            items(
+                                items = monthGroup.games,
+                                key = { it.id },
+                                contentType = { "game-card" }
+                            ) { game ->
                                 GameCard(
                                     game = game,
                                     onClick = { onGameClick(game.id) },

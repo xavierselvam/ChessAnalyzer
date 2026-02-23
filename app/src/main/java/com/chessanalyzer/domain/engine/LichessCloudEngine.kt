@@ -2,6 +2,7 @@ package com.chessanalyzer.domain.engine
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,6 +28,8 @@ class LichessCloudEngine @Inject constructor(
     companion object {
         private const val TAG = "LichessCloudEngine"
         private const val BASE_URL = "https://lichess.org/api/cloud-eval"
+        private const val MAX_RETRIES = 3
+        private const val DEFAULT_RETRY_DELAY_MS = 60_000L
     }
 
     /**
@@ -36,6 +39,8 @@ class LichessCloudEngine @Inject constructor(
      */
     suspend fun evaluate(fen: String, multiPv: Int = 1): StockfishEngine.EvalResult? =
         withContext(Dispatchers.IO) {
+            var attempt = 0
+            while (attempt < MAX_RETRIES) {
             try {
                 val encodedFen = URLEncoder.encode(fen, "UTF-8")
                 val url = "$BASE_URL?fen=$encodedFen&multiPv=$multiPv"
@@ -50,6 +55,19 @@ class LichessCloudEngine @Inject constructor(
                 if (response.code == 404) {
                     Log.d(TAG, "Position not in cloud DB: $fen")
                     return@withContext null
+                }
+
+                if (response.code == 429) {
+                    attempt++
+                    val retryAfter = response.header("Retry-After")?.toLongOrNull()
+                    val delayMs = if (retryAfter != null) retryAfter * 1000L else DEFAULT_RETRY_DELAY_MS
+                    Log.w(TAG, "Cloud eval 429 rate-limited (attempt $attempt/$MAX_RETRIES), retrying in ${delayMs}ms for fen: $fen")
+                    if (attempt < MAX_RETRIES) {
+                        delay(delayMs)
+                        continue
+                    } else {
+                        return@withContext null
+                    }
                 }
 
                 if (!response.isSuccessful) {
@@ -101,7 +119,7 @@ class LichessCloudEngine @Inject constructor(
                 val depth = json.optInt("depth", 0)
                 Log.d(TAG, "[cloud] depth=$depth bestMove=$bestMoveUci cp=${best.centipawns} fen=$fen")
 
-                StockfishEngine.EvalResult(
+                return@withContext StockfishEngine.EvalResult(
                     centipawns = best.centipawns,
                     isMate = best.isMate,
                     mateIn = best.mateIn,
@@ -111,7 +129,9 @@ class LichessCloudEngine @Inject constructor(
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Cloud eval exception: ${e.message}")
-                null
+                return@withContext null
             }
+            } // end while
+            null
         }
 }

@@ -63,6 +63,7 @@ class SyncRepository @Inject constructor(
             val lastTimestamp = gameRepository.getLatestGameTimestamp(Platform.CHESS_COM)
 
             var totalNew = 0
+            val excludedTypes = userPreferences.excludedSyncTypes.first()
 
             // Full sync: process all archives. Incremental: only last 3 months needed.
             val archivesToProcess = if (lastTimestamp == null) archives else archives.takeLast(3)
@@ -82,7 +83,8 @@ class SyncRepository @Inject constructor(
                     if (game.pgn == null) continue
                     if (game.rules != "chess") continue  // skip variants
                     if (lastTimestamp != null && game.endTime * 1000 <= lastTimestamp) continue
-                    archiveGames.add(mapChessComGame(game, username))
+                    val entity = mapChessComGame(game, username)
+                    if (entity.gameType !in excludedTypes) archiveGames.add(entity)
                 }
                 // Insert in chunks of 100 to avoid large transactions crashing
                 if (archiveGames.isNotEmpty()) {
@@ -105,6 +107,7 @@ class SyncRepository @Inject constructor(
         return try {
             val lastTimestamp = gameRepository.getLatestGameTimestamp(Platform.LICHESS)
             val since = lastTimestamp?.let { it + 1 }
+            val excludedTypes = userPreferences.excludedSyncTypes.first()
             val adapter = moshi.adapter(LichessGame::class.java)
             var totalNew = 0
 
@@ -139,7 +142,8 @@ class SyncRepository @Inject constructor(
                         val game = adapter.fromJson(line) ?: return@forEach
                         if (game.variant != "standard") return@forEach
                         oldestCreatedAt = minOf(oldestCreatedAt, game.createdAt)
-                        pageGames.add(mapLichessGame(game, username))
+                        val entity = mapLichessGame(game, username)
+                        if (entity.gameType !in excludedTypes) pageGames.add(entity)
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to parse Lichess game line", e)
                     }

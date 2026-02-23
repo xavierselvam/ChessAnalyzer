@@ -358,6 +358,27 @@ data class ChessBoard(
     }
 
     /**
+     * Returns true if the [activeColor]'s king is attacked by any opponent piece.
+     * Call this on the board *after* a move has been applied to detect check/checkmate sound.
+     */
+    fun isInCheck(): Boolean {
+        val kingChar = if (activeColor == 'w') 'K' else 'k'
+        var kingRank = -1; var kingFile = -1
+        outer@ for (r in 0..7) for (f in 0..7) {
+            if (squares[r][f] == kingChar) { kingRank = r; kingFile = f; break@outer }
+        }
+        if (kingRank < 0) return false
+        // Check if any opponent piece can attack the king square
+        val opponentIsUpper = activeColor == 'b' // opponent of active color
+        for (r in 0..7) for (f in 0..7) {
+            val p = squares[r][f] ?: continue
+            if (p.isUpperCase() != opponentIsUpper) continue
+            if (canMoveTo(p, r, f, kingRank, kingFile)) return true
+        }
+        return false
+    }
+
+    /**
      * Apply a move using from/to algebraic squares (e.g. "e2", "e4").
      * Pawns reaching the back rank auto-promote to queen.
      */

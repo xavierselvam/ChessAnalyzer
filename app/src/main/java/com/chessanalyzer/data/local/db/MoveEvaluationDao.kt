@@ -38,6 +38,30 @@ interface MoveEvaluationDao {
     suspend fun getKeyMoments(gameId: String): List<MoveEvaluationEntity>
 
     /**
+     * Returns puzzle candidates for the Practice screen:
+     * moves where the user made an error, filtered by classification and recency.
+     * Only returns positions where fenBefore and bestMove are populated.
+     * Results are random-ordered for variety.
+     */
+    @Query("""
+        SELECT me.id, me.gameId, me.fenBefore, me.bestMove, me.moveSan,
+               me.classification, me.moveNumber, me.color, g.userColor,
+               g.white, g.black, me.evalBefore, me.isMate
+        FROM move_evaluations me
+        JOIN games g ON g.id = me.gameId
+        WHERE me.classification IN (:classifications)
+        AND me.fenBefore != ''
+        AND me.bestMove != ''
+        AND LOWER(me.color) = LOWER(g.userColor)
+        AND g.playedAt > :cutoffMs
+        ORDER BY RANDOM()
+    """)
+    suspend fun getPracticePuzzles(
+        classifications: List<String>,
+        cutoffMs: Long
+    ): List<PracticePuzzleRow>
+
+    /**
      * Returns positions where the user repeatedly played a blunder or mistake
      * in games they ultimately lost, grouped by (fen, moveSan, bestMove).
      * Uses the post-move FEN (already populated for all analyzed games).
@@ -74,4 +98,20 @@ data class WeaknessRow(
     val lossCount: Int
 )
 
+/** One row returned by the practice-puzzle query — JOIN of move_evaluations + games. */
+data class PracticePuzzleRow(
+    val id: Long,
+    val gameId: String,
+    val fenBefore: String,
+    val bestMove: String,
+    val moveSan: String,
+    val classification: String,
+    val moveNumber: Int,
+    val color: String,      // "white" or "black" (which color the user played)
+    val userColor: String,  // "WHITE" or "BLACK" from games table
+    val white: String,
+    val black: String,
+    val evalBefore: Int,    // centipawns before the move (White's perspective)
+    val isMate: Boolean     // true if this is a forced mate position
+)
 

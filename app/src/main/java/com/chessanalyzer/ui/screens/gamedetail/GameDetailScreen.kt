@@ -1,5 +1,6 @@
 package com.chessanalyzer.ui.screens.gamedetail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -422,62 +423,50 @@ fun GameDetailScreen(
                     Spacer(modifier = Modifier.weight(1f))
                 }
 
-                // Navigation controls — pinned at bottom of frame
+                // Navigation + action icons — all in one compact row
+                val game = uiState.game
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = viewModel::goToStart, enabled = uiState.canGoBack) {
+                    IconButton(onClick = viewModel::goToStart, enabled = uiState.canGoBack, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.SkipPrevious, contentDescription = "Start")
                     }
-                    IconButton(onClick = viewModel::goBack, enabled = uiState.canGoBack) {
+                    IconButton(onClick = viewModel::goBack, enabled = uiState.canGoBack, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
                     }
                     Text(
                         text = "${uiState.currentPositionIndex} / ${uiState.totalPositions - 1}",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    IconButton(onClick = viewModel::goForward, enabled = uiState.canGoForward) {
+                    IconButton(onClick = viewModel::goForward, enabled = uiState.canGoForward, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
                     }
-                    IconButton(onClick = viewModel::goToEnd, enabled = uiState.canGoForward) {
+                    IconButton(onClick = viewModel::goToEnd, enabled = uiState.canGoForward, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.SkipNext, contentDescription = "End")
                     }
+                    if (game != null && game.analysisStatus == AnalysisStatus.DONE && !uiState.isAnalyzing && !uiState.isQueued) {
+                        Box(modifier = Modifier.width(1.dp).height(20.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                        IconButton(onClick = viewModel::analyzeGame, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Re-analyze", modifier = Modifier.size(18.dp))
+                        }
+                        IconButton(onClick = viewModel::exportAnnotatedPgn, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Default.Share, contentDescription = "Share PGN", modifier = Modifier.size(18.dp))
+                        }
+                    }
                 }
-
-                // Action buttons — pinned at bottom
-                val game = uiState.game
-                if (game != null && !uiState.isAnalyzing && !uiState.isQueued) {
-                    when {
-                        game.analysisStatus == AnalysisStatus.PENDING -> Button(
-                            onClick = viewModel::analyzeGame,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Psychology, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Analyze with Stockfish")
-                        }
-                        game.analysisStatus == AnalysisStatus.DONE -> Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(onClick = viewModel::analyzeGame, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Re-analyze", style = MaterialTheme.typography.labelMedium)
-                            }
-                            OutlinedButton(onClick = viewModel::exportAnnotatedPgn, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Share, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share PGN", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                        else -> {}
+                // Full-width Analyze button only when not yet analyzed
+                if (game != null && game.analysisStatus == AnalysisStatus.PENDING && !uiState.isAnalyzing && !uiState.isQueued) {
+                    Button(
+                        onClick = viewModel::analyzeGame,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Psychology, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Analyze with Stockfish")
                     }
                 }
             } // end fixed bottom frame

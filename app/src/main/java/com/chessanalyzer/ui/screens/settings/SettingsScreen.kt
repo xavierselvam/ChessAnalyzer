@@ -251,6 +251,48 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
+            // --- Sound Section ---
+            Text(
+                text = "Sound",
+                style = MaterialTheme.typography.headlineMedium
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Move sounds", style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = uiState.soundEnabled,
+                    onCheckedChange = viewModel::onSoundEnabledChange
+                )
+            }
+
+            if (uiState.soundEnabled) {
+                Column {
+                    Text(
+                        text = "Volume: ${(uiState.soundVolume * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Slider(
+                        value = uiState.soundVolume,
+                        onValueChange = viewModel::onSoundVolumeChange,
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Quiet", style = MaterialTheme.typography.bodySmall)
+                        Text("Full", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
             // --- Data Section ---
             Text("Data", style = MaterialTheme.typography.headlineMedium)
 

@@ -26,6 +26,8 @@ class UserPreferences @Inject constructor(
         val LAST_SYNC_TIME = longPreferencesKey("last_sync_time")
         /** Game types excluded from sync e.g. {"bullet", "blitz"} */
         val EXCLUDED_SYNC_TYPES = stringSetPreferencesKey("excluded_sync_types")
+        val SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
+        val SOUND_VOLUME = floatPreferencesKey("sound_volume")
     }
 
     val chessComUsername: Flow<String> = context.dataStore.data.map { prefs ->
@@ -58,6 +60,14 @@ class UserPreferences @Inject constructor(
 
     val excludedSyncTypes: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[EXCLUDED_SYNC_TYPES] ?: emptySet()
+    }
+
+    val soundEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[SOUND_ENABLED] ?: true
+    }
+
+    val soundVolume: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[SOUND_VOLUME] ?: 1.0f
     }
 
     suspend fun setChessComUsername(username: String) {
@@ -105,6 +115,18 @@ class UserPreferences @Inject constructor(
     suspend fun setExcludedSyncTypes(types: Set<String>) {
         context.dataStore.edit { prefs ->
             prefs[EXCLUDED_SYNC_TYPES] = types
+        }
+    }
+
+    suspend fun setSoundEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SOUND_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setSoundVolume(volume: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[SOUND_VOLUME] = volume.coerceIn(0f, 1f)
         }
     }
 }

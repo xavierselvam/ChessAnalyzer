@@ -23,6 +23,7 @@ import com.chessanalyzer.domain.model.MoveEvaluation
 import com.chessanalyzer.domain.usecase.GetGamesUseCase
 import com.chessanalyzer.data.repository.GameRepository
 import com.chessanalyzer.ui.components.EngineLine
+import com.chessanalyzer.audio.ChessSoundPlayer
 import com.chessanalyzer.worker.AnalysisWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -240,7 +241,8 @@ class GameDetailViewModel @Inject constructor(
     private val gameRepository: GameRepository,
     private val positionEvaluator: PositionEvaluator,
     private val tablebaseService: LichessTablebaseService,
-    private val openingService: LichessOpeningService
+    private val openingService: LichessOpeningService,
+    private val soundPlayer: ChessSoundPlayer
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GameDetailUiState())
@@ -342,6 +344,18 @@ class GameDetailViewModel @Inject constructor(
     }
 
     fun goForward() {
+        val state = _uiState.value
+        val newIndex = minOf(state.positions.size - 1, state.currentPositionIndex + 1)
+        if (newIndex != state.currentPositionIndex) {
+            val san = state.positions.getOrNull(newIndex)?.lastMoveSan ?: ""
+            val fen = state.positions.getOrNull(newIndex)?.fen
+            if (fen != null) {
+                val board = try { ChessBoard.fromFen(fen) } catch (_: Exception) { null }
+                val isCapture = 'x' in san
+                if (board != null) soundPlayer.playMoveSound(board, isCapture)
+                else if (isCapture) soundPlayer.playCapture() else soundPlayer.playMove()
+            }
+        }
         _uiState.update {
             it.copy(currentPositionIndex = minOf(it.positions.size - 1, it.currentPositionIndex + 1))
         }
@@ -430,8 +444,12 @@ class GameDetailViewModel @Inject constructor(
                     _uiState.update { it.copy(selectedSquare = null, legalTargets = emptySet()) }
                 }
                 square in targets -> {
-                    // Legal move — apply it
+                    // Play appropriate sound (check > capture > move)
+                    val movingPiece = board.getPieceAt(selected) ?: ' '
+                    val captureTarget = board.getPieceAt(square)
+                    val isCapture = captureTarget != null || (movingPiece.lowercaseChar() == 'p' && selected[0] != square[0])
                     val newBoard = board.applyMoveSquares(selected, square)
+                    soundPlayer.playMoveSound(newBoard, isCapture)
                     val newFen = newBoard.toFen()
                     val inPractice = state.isPracticeMode
                     _uiState.update {

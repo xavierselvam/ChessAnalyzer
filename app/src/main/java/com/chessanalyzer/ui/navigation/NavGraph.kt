@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.chessanalyzer.ui.screens.gamedetail.GameDetailScreen
 import com.chessanalyzer.ui.screens.games.GamesScreen
+import com.chessanalyzer.ui.screens.practice.PracticeScreen
 import com.chessanalyzer.ui.screens.review.ReviewScreen
 import com.chessanalyzer.ui.screens.settings.SettingsScreen
 import com.chessanalyzer.ui.screens.stats.StatsScreen
@@ -26,6 +28,7 @@ import com.chessanalyzer.ui.screens.stats.StatsScreen
 sealed class Screen(val route: String, val title: String) {
     object Games : Screen("games", "Games")
     object Stats : Screen("stats", "Stats")
+    object Practice : Screen("practice", "Train")
     object Settings : Screen("settings", "Settings")
     object GameDetail : Screen("game/{gameId}", "Game") {
         fun createRoute(gameId: String) = "game/$gameId"
@@ -45,7 +48,7 @@ fun ChessAnalyzerNavHost() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    val bottomBarScreens = listOf(Screen.Games, Screen.Stats, Screen.Settings)
+    val bottomBarScreens = listOf(Screen.Games, Screen.Stats, Screen.Practice, Screen.Settings)
     val showBottomBar = currentDestination?.hierarchy?.any { dest ->
         bottomBarScreens.any { it.route == dest.route }
     } == true
@@ -71,6 +74,17 @@ fun ChessAnalyzerNavHost() {
                         selected = currentDestination?.route == Screen.Stats.route,
                         onClick = {
                             navController.navigate(Screen.Stats.route) {
+                                popUpTo(Screen.Games.route)
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Default.School, contentDescription = "Train") },
+                        label = { Text("Train") },
+                        selected = currentDestination?.route == Screen.Practice.route,
+                        onClick = {
+                            navController.navigate(Screen.Practice.route) {
                                 popUpTo(Screen.Games.route)
                                 launchSingleTop = true
                             }
@@ -108,6 +122,14 @@ fun ChessAnalyzerNavHost() {
                 StatsScreen(
                     onOpeningClick = { opening ->
                         navController.navigate(Screen.GamesFiltered.createRoute(opening))
+                    }
+                )
+            }
+
+            composable(Screen.Practice.route) {
+                PracticeScreen(
+                    onNavigateToGame = { gameId ->
+                        navController.navigate(Screen.GameDetail.createRoute(gameId))
                     }
                 )
             }

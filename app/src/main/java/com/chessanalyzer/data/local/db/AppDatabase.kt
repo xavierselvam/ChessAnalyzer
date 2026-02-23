@@ -6,14 +6,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [GameEntity::class, MoveEvaluationEntity::class, PositionEvalCacheEntity::class],
-    version = 8,
+    entities = [GameEntity::class, MoveEvaluationEntity::class, PositionEvalCacheEntity::class, PracticeSolvedEntity::class],
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun gameDao(): GameDao
     abstract fun moveEvaluationDao(): MoveEvaluationDao
     abstract fun positionEvalCacheDao(): PositionEvalCacheDao
+    abstract fun practiceSolvedDao(): PracticeSolvedDao
 
     companion object {
         const val DATABASE_NAME = "chess_analyzer_db"
@@ -68,6 +69,17 @@ abstract class AppDatabase : RoomDatabase() {
                 database.execSQL("ALTER TABLE move_evaluations ADD COLUMN secondBestMove TEXT NOT NULL DEFAULT ''")
                 database.execSQL("ALTER TABLE move_evaluations ADD COLUMN thirdBestMove TEXT NOT NULL DEFAULT ''")
                 database.execSQL("ALTER TABLE move_evaluations ADD COLUMN thirdBestMoveEval INTEGER")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """CREATE TABLE IF NOT EXISTS practice_solved (
+                        positionKey TEXT NOT NULL PRIMARY KEY,
+                        solvedAt INTEGER NOT NULL
+                    )"""
+                )
             }
         }
     }
